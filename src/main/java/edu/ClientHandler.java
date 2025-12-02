@@ -38,6 +38,7 @@ public class ClientHandler implements Runnable{
                     switch (parts[0]){
                         case "login" -> handleLogin(parts, out, senderIP, senderHost);
                         case "register"-> handleRegister(parts, out, senderIP, senderHost);
+                        case "sendMessage"-> handleSend(parts, out, senderIP, senderHost);
                         default -> out.println("ERROR: Unknown command");
                     }
                 }
@@ -103,5 +104,23 @@ public class ClientHandler implements Runnable{
                 out.println("REGISTER FAIED");
                 e.printStackTrace();
             }
+        }
+
+        private void handleSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
+            String dest = parts[1];
+
+            StringBuilder messageBuilder = new StringBuilder();
+
+            for (int i = 2; i < parts.length-2; i++){
+
+                messageBuilder.append(parts[i]);
+                if (i < parts.length - 2){
+                    messageBuilder.append(" ");
+                }
+
+                String message = messageBuilder.toString();
+
+            }
+
         }
     }
