@@ -10,6 +10,8 @@ public class ClientHandler implements Runnable{
         private static final Set<PrintWriter> clientWriters = new HashSet<>(); //This is just a list of all currently connected devices. This is just to test out broadcast.
         private Socket client;
         private Connection conn;
+        private PrintWriter out; 
+
 
         public ClientHandler(Socket client, Connection conn){
             this.client = client;
@@ -23,6 +25,13 @@ public class ClientHandler implements Runnable{
                     new InputStreamReader(client.getInputStream()));
 
                 PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+                
+                this.out = new PrintWriter(client.getOutputStream(), true);
+
+                synchronized (clientWriters){
+                    clientWriters.add(this.out);
+                    System.out.println("Client connected. Total clients for broadcast: " + clientWriters.size());
+                }
 
                 String senderIP = client.getInetAddress().getHostAddress();
                 String senderHost = client.getInetAddress().getHostName();
@@ -49,8 +58,14 @@ public class ClientHandler implements Runnable{
             } catch (Exception e){
                 e.printStackTrace();
             } finally {
+                if (this.out != null) {
+                    synchronized (clientWriters) {
+                        clientWriters.remove(this.out);
+                        System.out.println("Client disconnected. Remaining clients for broadcast: " + clientWriters.size());
+                    }
+                }
                 try { client.close(); } catch (IOException ignored) {}
-            }
+        }
         }
 
         private void handleLogin(String[] parts, PrintWriter out, String senderIP, String senderHost){
@@ -122,22 +137,22 @@ public class ClientHandler implements Runnable{
                     messageBuilder.append(" ");
                 }
 
-                String message = messageBuilder.toString().trim();
+            }
 
-                if (message.isEmpty()) {
-                    out.println("ERROR: Message content cannot be empty.");
-                return;
+            String message = messageBuilder.toString().trim();
+
+            if (message.isEmpty()) {
+                 out.println("ERROR: Message content cannot be empty.");
+            return;
+             }
+
+            String broadcastMessage = String.format("MSG #%s: %s", channel, message);
+
+            synchronized(clientWriters){
+
+            for (PrintWriter writer : clientWriters){
+                writer.println(broadcastMessage);
                 }
-
-                String broadcastMessage = String.format("MSG #%s: %s", channel, message);
-
-                synchronized(clientWriters){
-
-                    for (PrintWriter writer : clientWriters){
-                        writer.println(broadcastMessage);
-                    }
-                }
-
             }
 
         }
