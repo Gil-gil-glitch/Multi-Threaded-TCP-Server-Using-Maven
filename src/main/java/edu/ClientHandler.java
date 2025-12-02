@@ -3,15 +3,18 @@ package edu;
 import java.io.*;
 import java.net.*;
 import java.sql.*;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public class ClientHandler implements Runnable{
         private static final Set<PrintWriter> clientWriters = new HashSet<>(); //This is just a list of all currently connected devices. This is just to test out broadcast.
+        private static final Map<PrintWriter, String> clientUsernames = new HashMap<>(); //Map to keep track of which writer belongs to which username.
         private Socket client;
         private Connection conn;
         private PrintWriter out; 
-
+        private String currentUsername = null;
 
         public ClientHandler(Socket client, Connection conn){
             this.client = client;
@@ -88,6 +91,11 @@ public class ClientHandler implements Runnable{
 
                 ResultSet rs = pstmt.executeQuery();
                 if (rs.next()){
+                    String username = parts[1];
+                    synchronized (clientUsernames){
+                        clientUsernames.put(this.out, username);
+                    }
+                    currentUsername = username;
                     out.println("LOGIN OK");
                 } else {
                     out.println("LOGIN FAILED");        
@@ -126,6 +134,12 @@ public class ClientHandler implements Runnable{
         private void handleSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
             //TO DO: Complete channel messaging implementation. Direct message handling will be added later by Stella.
 
+            String sender = currentUsername;
+            if (sender == null) {
+                out.println("ERROR: You must be logged in to send messages.");
+                return;
+            }
+
             String channel = parts[1];
 
             StringBuilder messageBuilder = new StringBuilder();
@@ -144,7 +158,35 @@ public class ClientHandler implements Runnable{
             if (message.isEmpty()) {
                  out.println("ERROR: Message content cannot be empty.");
             return;
-             }
+            
+            }
+
+             String insertSql = """
+                    INSERT INTO channel_messages (sender, channel, message)
+                    VALUES (?, ?, ?)
+                    """;
+            try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                pstmt.setString(1, sender);
+                pstmt.setString(2, channel);
+                pstmt.setString(3, message);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                out.println("ERROR: Failed to save message to database.");
+                e.printStackTrace();
+                return;
+            }
+
+            synchronized (clientWriters) {
+                synchronized (clientUsernames) {
+                    for (Map.Entry<PrintWriter, String> entry : clientUsernames.entrySet()) {
+                        if (entry.getValue().equals(channel)) {
+                            PrintWriter receiverWriter = entry.getKey();
+                            receiverWriter.println(String.format("receivedMessage %s \"%s\"", sender, message));
+                            break;
+                        }
+                    }
+                }
+            }
 
             String broadcastMessage = String.format("MSG #%s: %s", channel, message);
 

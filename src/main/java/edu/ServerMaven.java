@@ -27,6 +27,7 @@ public class ServerMaven {
         try (Connection conn = DriverManager.getConnection(USERS_DB_URL); ServerSocket serverSocket = new ServerSocket(port)){
 
             createUsersTableIfNotExists(conn);
+            createChannelMessagesTableIfNotExists(conn);
 
             while (true){
                 Socket client = serverSocket.accept();
@@ -45,6 +46,19 @@ public class ServerMaven {
                 "password TEXT NOT NULL," +
                 "ip_address TEXT NOT NULL," +
                 "hostname TEXT NOT NULL" +
+                ");";
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(createTableSQL);
+        }
+    }
+
+    private static void createChannelMessagesTableIfNotExists(Connection conn) throws SQLException {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS channel_messages (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "sender TEXT NOT NULL," +
+                "channel TEXT NOT NULL," +
+                "message TEXT NOT NULL," +
+                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP" +
                 ");";
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createTableSQL);
