@@ -3,9 +3,11 @@ package edu;
 import java.io.*;
 import java.net.*;
 import java.sql.*;
+import java.util.HashSet;
+import java.util.Set;
 
 public class ClientHandler implements Runnable{
-
+        private static final Set<PrintWriter> clientWriters = new HashSet<>(); //This is just a list of all currently connected devices. This is just to test out broadcast.
         private Socket client;
         private Connection conn;
 
@@ -107,18 +109,29 @@ public class ClientHandler implements Runnable{
         }
 
         private void handleSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
-            String dest = parts[1];
+            //TO DO: Complete channel messaging implementation. Direct message handling will be added later by Stella.
+
+            String channel = parts[1];
 
             StringBuilder messageBuilder = new StringBuilder();
 
             for (int i = 2; i < parts.length-2; i++){
 
                 messageBuilder.append(parts[i]);
-                if (i < parts.length - 2){
+                if (i < parts.length - 1){
                     messageBuilder.append(" ");
                 }
 
                 String message = messageBuilder.toString();
+
+                String broadcastMessage = String.format("MSG #%s: %s", channel, message);
+
+                synchronized(clientWriters){
+
+                    for (PrintWriter writer : clientWriters){
+                        writer.println(broadcastMessage);
+                    }
+                }
 
             }
 
