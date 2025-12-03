@@ -52,7 +52,8 @@ public class ClientHandler implements Runnable{
                     switch (parts[0]){
                         case "login" -> handleLogin(parts, out, senderIP, senderHost);
                         case "register"-> handleRegister(parts, out, senderIP, senderHost);
-                        case "sendMessage"-> handleSend(parts, out, senderIP, senderHost);
+                        case "sendChannelMessage"-> handleChannelSend(parts, out, senderIP, senderHost);
+                        case "sendDirectMessage"-> handleSend(parts, out, senderIP, senderHost);
                         default -> out.println("ERROR: Unknown command");
                     }
                 }
@@ -131,7 +132,7 @@ public class ClientHandler implements Runnable{
             }
         }
 
-        private void handleSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
+        private void handleChannelSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
             //TO DO: Complete channel messaging implementation. Direct message handling will be added later by Stella.
 
             String sender = currentUsername;
@@ -197,5 +198,100 @@ public class ClientHandler implements Runnable{
                 }
             }
 
+        }
+
+        private void handleSend(String[] parts, PrintWriter out, String senderIP, String senderHost){
+            if (parts.length < 3) {
+                out.println("ERROR: usage: sendMessage <receiver> \"<message>\"");
+                return;
+            }
+
+            // Check currently logged-in user
+            String sender = currentUsername;
+            if (sender == null) {
+                out.println("ERROR: You must be logged in to send messages.");
+                return;
+            }
+
+            String receiver = parts[1];
+            
+            // Parse message wrapped in quotes
+            StringBuilder messageBuilder = new StringBuilder();
+            boolean inQuotes = false;
+            
+            for (int i = 2; i < parts.length; i++) {
+                String part = parts[i];
+                if (part.startsWith("\"") && !inQuotes) {
+                    inQuotes = true;
+                    messageBuilder.append(part.substring(1));
+                    if (part.endsWith("\"") && part.length() > 1) {
+                        inQuotes = false;
+                        messageBuilder.setLength(messageBuilder.length() - 1);
+                        break;
+                    }
+                } else if (inQuotes) {
+                    if (part.endsWith("\"")) {
+                        inQuotes = false;
+                        messageBuilder.append(" ").append(part.substring(0, part.length() - 1));
+                        break;
+                    } else {
+                        messageBuilder.append(" ").append(part);
+                    }
+                } else {
+                    messageBuilder.append(part);
+                    if (i < parts.length - 1) {
+                        messageBuilder.append(" ");
+                    }
+                }
+            }
+
+            String message = messageBuilder.toString().trim();
+
+            if (message.isEmpty()) {
+                out.println("ERROR: Message content cannot be empty.");
+                return;
+            }
+
+            if (message.length() > 2000) {
+                out.println("ERROR: Message too long. Maximum length is 2000 characters.");
+                return;
+            }
+
+            // Save message to database
+            String insertSql = """
+                    INSERT INTO direct_messages (sender, receiver, message)
+                    VALUES (?, ?, ?)
+                    """;
+            try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                pstmt.setString(1, sender);
+                pstmt.setString(2, receiver);
+                pstmt.setString(3, message);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                out.println("ERROR: Failed to save message to database.");
+                e.printStackTrace();
+                return;
+            }
+
+            // Check if receiver is currently connected and send message
+            boolean receiverFound = false;
+            synchronized (clientWriters) {
+                synchronized (clientUsernames) {
+                    for (Map.Entry<PrintWriter, String> entry : clientUsernames.entrySet()) {
+                        if (entry.getValue().equals(receiver)) {
+                            PrintWriter receiverWriter = entry.getKey();
+                            receiverWriter.println(String.format("receivedMessage %s \"%s\"", sender, message));
+                            receiverFound = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (receiverFound) {
+                out.println("MESSAGE SENT");
+            } else {
+                out.println("MESSAGE SENT (User " + receiver + " is offline. Message will be delivered when they login.)");
+            }
         }
     }
