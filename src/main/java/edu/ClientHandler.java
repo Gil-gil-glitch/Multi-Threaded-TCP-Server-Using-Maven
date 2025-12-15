@@ -75,7 +75,7 @@ public class ClientHandler implements Runnable{
                         case "createTask"-> createTasks(parts, out, senderIP, senderHost);
                         case "assignTask" -> assignTasks(parts, out);
                         case "viewTasks" -> viewTasks(parts, out);
-                        case "sendFile" -> handleFileSend(parts, new DataInputStream(client.getInputStream()), new DataOutputStream(client.getOutputStream()));
+                        case "sendFile" -> handleFileSend(parts, client.getInputStream(), client.getOutputStream());
                         default -> out.println("ERROR: Unknown command");
                     }
                 }
@@ -414,50 +414,63 @@ public class ClientHandler implements Runnable{
             // To be implemented
         }
 
-        private void handleFileSend(String[] parts, DataInputStream in, DataOutputStream out) {
-        try {
-            if (!isLoggedIn) {
-                out.writeUTF("ERROR: Login required");
-                return;
-            }
+        private void handleFileSend(String[] parts, InputStream rawIn, OutputStream rawOut) {
+            
+            DataInputStream fileDataIn = null;
+            DataOutputStream fileDataOut = null;
+            try {
+                if (!isLoggedIn) {
+                    fileDataOut.writeUTF("ERROR: Login required");
+                    return;
+                }
 
-            if (parts.length < 5) {
-                out.writeUTF("ERROR: sendFile <channel|user> <destination> <filename> <filesize>");
-                return;
-            }
+                if (parts.length < 5) {
+                    fileDataOut.writeUTF("ERROR: sendFile <channel|user> <destination> <filename> <filesize>");
+                    return;
+                }
 
-            String type = parts[1]; // channel | user
-            String destination = parts[2];
-            String filename = parts[3];
-            long fileSize = Long.parseLong(parts[4]);
+                String type = parts[1]; // channel | user
+                String destination = parts[2];
+                String filename = parts[3];
+                long fileSize = Long.parseLong(parts[4]);
 
-            byte[] fileBytes = new byte[(int) fileSize];
-            in.readFully(fileBytes);
+                this.out.println("READY_FOR_FILE");
 
-        
-            String sql = """
-                INSERT INTO files (sender, destination_type, destination_name, filename, file_data)
-                VALUES (?, ?, ?, ?, ?)
-            """;
+                fileDataIn = new DataInputStream(rawIn);
+                fileDataOut = new DataOutputStream(rawOut);
+                byte[] fileBytes = new byte[(int) fileSize];
+                fileDataIn.readFully(fileBytes);
 
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, currentUsername);
-                pstmt.setString(2, type.toUpperCase());
-                pstmt.setString(3, destination);
-                pstmt.setString(4, filename);
-                pstmt.setBytes(5, fileBytes);
-                pstmt.executeUpdate();
-            }
+            
+                String sql = """
+                    INSERT INTO files (sender, destination_type, destination_name, filename, file_data)
+                    VALUES (?, ?, ?, ?, ?)
+                """;
 
-        
-            forwardFile(type, destination, filename, fileBytes);
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, currentUsername);
+                    pstmt.setString(2, type.toUpperCase());
+                    pstmt.setString(3, destination);
+                    pstmt.setString(4, filename);
+                    pstmt.setBytes(5, fileBytes);
+                    pstmt.executeUpdate();
+                }
 
-            out.writeUTF("FILE SENT");
+            
+                forwardFile(type, destination, filename, fileBytes);
 
-        } catch (Exception e) {
-            e.printStackTrace();
-            try { out.writeUTF("ERROR: File transfer failed"); } catch (IOException ignored) {}
-        }
+                fileDataOut.writeUTF("FILE SENT");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                try {
+                    if (fileDataOut != null) {
+                        fileDataOut.writeUTF("ERROR: File transfer failed");
+                    }
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                }
+            } 
     }
 
     private void forwardFile(String type, String destination, String filename, byte[] data) throws IOException {
