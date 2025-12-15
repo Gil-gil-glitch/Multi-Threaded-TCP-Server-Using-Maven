@@ -12,11 +12,7 @@ public class ServerMaven {
         
         int port = Integer.parseInt(args[0]);
 
-
-
-        System.out.println("TCP Server running on " + port);
-
-        
+        System.out.println("TCP Server running on " + port);        
         
         try {
             Class.forName("org.sqlite.JDBC");
@@ -27,6 +23,9 @@ public class ServerMaven {
         try (Connection conn = DriverManager.getConnection(USERS_DB_URL); ServerSocket serverSocket = new ServerSocket(port)){
 
             createUsersTableIfNotExists(conn);
+            createChannelMessagesTableIfNotExists(conn);
+            createDirectMessagesTableIfNotExists(conn);
+            createTasksTableIfNotExists(conn);
 
             while (true){
                 Socket client = serverSocket.accept();
@@ -44,12 +43,51 @@ public class ServerMaven {
                 "username TEXT NOT NULL," +
                 "password TEXT NOT NULL," +
                 "ip_address TEXT NOT NULL," +
-                "hostname TEXT NOT NULL" +
+                "hostname TEXT NOT NULL," +
+                "loggedin INTEGER DEFAULT 0" +
                 ");";
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createTableSQL);
         }
     }
 
-    
+    private static void createDirectMessagesTableIfNotExists(Connection conn) throws SQLException {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS direct_messages (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "sender TEXT NOT NULL," +
+                "receiver TEXT NOT NULL," +
+                "message TEXT NOT NULL," +
+                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP" +
+                ");";
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(createTableSQL);
+        }
+    }
+
+    private static void createChannelMessagesTableIfNotExists(Connection conn) throws SQLException {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS channel_messages (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "sender TEXT NOT NULL," +
+                "channel TEXT NOT NULL," +
+                "message TEXT NOT NULL," +
+                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP" +
+                ");";
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(createTableSQL);
+        }
+    }
+
+    private static void createTasksTableIfNotExists(Connection conn) throws SQLException {
+    String createTableSQL = "CREATE TABLE IF NOT EXISTS tasks (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "creator TEXT NOT NULL," +
+            // "assignee TEXT," +                 
+            "description TEXT NOT NULL" +      
+            ");";
+    try (Statement stmt = conn.createStatement()) {
+        stmt.execute(createTableSQL);
+    }
+    }
 }
+
+    
