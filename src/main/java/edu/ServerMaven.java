@@ -88,6 +88,23 @@ public class ServerMaven {
         stmt.execute(createTableSQL);
     }
     }
+
+    public static void createFilesTableIfNotExists(Connection conn) throws SQLException {
+
+        String createTABLESQL = "CREATE TABLE files (\n" + //
+                        "    id INT AUTO_INCREMENT PRIMARY KEY,\n" + //
+                        "    sender VARCHAR(50) NOT NULL,\n" + //
+                        "    destination_type ENUM('CHANNEL','USER') NOT NULL,\n" + //
+                        "    destination_name VARCHAR(50) NOT NULL,\n" + //
+                        "    filename VARCHAR(255) NOT NULL,\n" + //
+                        "    file_data LONGBLOB NOT NULL,\n" + //
+                        "    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n" + //
+                        ");";
+        
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(createTABLESQL);   
+        
+    }
 }
 
     
