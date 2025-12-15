@@ -8,20 +8,35 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+
 public class ClientHandler implements Runnable{
         private static final Set<PrintWriter> clientWriters = new HashSet<>(); //This is just a list of all currently connected devices. This is just to test out broadcast.
         private static final Map<PrintWriter, String> clientUsernames = new HashMap<>(); //Map to keep track of which writer belongs to which username.
+        private static final Map<String, ClientConnection> clients = new HashMap<>();
         private Socket client;
         private Connection conn;
         private PrintWriter out; 
         private String currentUsername = null;
-        private boolean isLoggedIn;
+        private boolean isLoggedIn = false;         
 
         private static final String USERS_DB_URL = "jdbc:sqlite:users.db";
 
         public ClientHandler(Socket client, Connection conn){
             this.client = client;
             this.conn = conn;
+        }
+
+        class ClientConnection {
+            Socket socket;
+            PrintWriter writer;
+            DataOutputStream dataOut;
+            String username;
+
+            ClientConnection(Socket socket) throws IOException {
+                this.socket = socket;
+                this.writer = new PrintWriter(socket.getOutputStream(), true);
+                this.dataOut = new DataOutputStream(socket.getOutputStream());
+            }
         }
 
         @Override
@@ -60,6 +75,7 @@ public class ClientHandler implements Runnable{
                         case "createTask"-> createTasks(parts, out, senderIP, senderHost);
                         case "assignTask" -> assignTasks(parts, out);
                         case "viewTasks" -> viewTasks(parts, out);
+                        case "sendFile" -> handleFileSend(parts, new DataInputStream(client.getInputStream()), new DataOutputStream(client.getOutputStream()));
                         default -> out.println("ERROR: Unknown command");
                     }
                 }
@@ -397,4 +413,75 @@ public class ClientHandler implements Runnable{
         private void viewTasks(String[] parts, PrintWriter out) {
             // To be implemented
         }
+
+        private void handleFileSend(String[] parts, DataInputStream in, DataOutputStream out) {
+        try {
+            if (!isLoggedIn) {
+                out.writeUTF("ERROR: Login required");
+                return;
+            }
+
+            if (parts.length < 5) {
+                out.writeUTF("ERROR: sendFile <channel|user> <destination> <filename> <filesize>");
+                return;
+            }
+
+            String type = parts[1]; // channel | user
+            String destination = parts[2];
+            String filename = parts[3];
+            long fileSize = Long.parseLong(parts[4]);
+
+            byte[] fileBytes = new byte[(int) fileSize];
+            in.readFully(fileBytes);
+
+        
+            String sql = """
+                INSERT INTO files (sender, destination_type, destination_name, filename, file_data)
+                VALUES (?, ?, ?, ?, ?)
+            """;
+
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, currentUsername);
+                pstmt.setString(2, type.toUpperCase());
+                pstmt.setString(3, destination);
+                pstmt.setString(4, filename);
+                pstmt.setBytes(5, fileBytes);
+                pstmt.executeUpdate();
+            }
+
+        
+            forwardFile(type, destination, filename, fileBytes);
+
+            out.writeUTF("FILE SENT");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            try { out.writeUTF("ERROR: File transfer failed"); } catch (IOException ignored) {}
+        }
     }
+
+    private void forwardFile(String type, String destination, String filename, byte[] data) throws IOException {
+        synchronized (clients) {
+
+            if (type.equalsIgnoreCase("user")) {
+                ClientConnection cc = clients.get(destination);
+                if (cc != null) {
+                    cc.dataOut.writeUTF("incomingFile " + filename + " " + data.length);
+                    cc.dataOut.write(data);
+                    cc.dataOut.flush();
+                }
+            }
+
+            else if (type.equalsIgnoreCase("channel")) {
+                for (ClientConnection cc : clients.values()) {
+                    // TODO: check channel membership properly
+                    cc.dataOut.writeUTF("incomingFile " + filename + " " + data.length);
+                    cc.dataOut.write(data);
+                    cc.dataOut.flush();
+                }
+            }
+        }
+    }
+
+
+}

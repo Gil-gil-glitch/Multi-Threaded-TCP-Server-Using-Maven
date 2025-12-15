@@ -104,7 +104,7 @@ public class ServerMaven {
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createTABLESQL);   
         
+        }
     }
 }
-
     
