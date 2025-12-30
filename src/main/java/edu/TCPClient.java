@@ -109,8 +109,8 @@ public class TCPClient {
             System.out.println("Connected! Type commands:");
             System.out.println("  login <username> <password>");
             System.out.println("  register <username> <password>");
-            System.out.println("Type 'quit' or 'exit' to disconnect.\n");
-            System.out.print("> ");
+                    System.out.println("Type 'quit' or 'exit' to disconnect.\n");
+                    System.out.print("> ");
             
             // Interactive command input
             String userInput;
@@ -173,18 +173,20 @@ public class TCPClient {
                                 System.out.println("  send #<channel> <message>  (e.g., send #general Hello)");
                                 System.out.println("  send @<username> <message>  (e.g., send @alice Hello)");
                                 System.out.println("  createTask <task_description>");
+                                System.out.println("  assignTask <task_id> <username>");
+                                System.out.println("  viewTasks");
                                 System.out.println("  sendFile user <receiver> <file_name>");
                                 System.out.print("\n> ");
                         } else if (client.lastResponse.equals("LOGIN FAILED")) {
                             System.err.println("\n✗ Login failed. Check username/password or register first.");
-                            System.out.print("> ");
-                        } else {
+                    System.out.print("> ");
+                } else {
                             System.err.println("\n✗ " + client.lastResponse);
                             System.out.print("> ");
                         }
                     } else {
                         System.err.println("\n✗ No response from server.");
-                        System.out.print("> ");
+                    System.out.print("> ");
                     }
                     continue;
                 }

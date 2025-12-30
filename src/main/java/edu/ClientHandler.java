@@ -67,15 +67,21 @@ public class ClientHandler implements Runnable{
                     if (parts.length == 0)
                         continue;
 
-                    switch (parts[0]){
+                    String command = parts[0];
+                    System.out.println("Parsed command: '" + command + "'");
+                    
+                    switch (command){
                         case "login" -> handleLogin(parts, out, senderIP, senderHost);
-                        case "register"-> handleRegister(parts, out, senderIP, senderHost);
+                        case "register" -> handleRegister(parts, out, senderIP, senderHost);
                         case "send" -> handleSendUnified(parts, out, senderIP, senderHost);
-                        case "createTask"-> createTasks(parts, out, senderIP, senderHost);
+                        case "createTask" -> createTasks(parts, out, senderIP, senderHost);
                         case "assignTask" -> assignTasks(parts, out);
                         case "viewTasks" -> viewTasks(parts, out);
                         case "sendFile" -> handleFileSend(parts, client.getInputStream(), client.getOutputStream());
-                        default -> out.println("ERROR: Unknown command");
+                        default -> {
+                            System.out.println("ERROR: Unknown command: '" + command + "'");
+                            out.println("ERROR: Unknown command: '" + command + "'. Available: login, register, send, createTask, assignTask, viewTasks, sendFile");
+                        }
                     }
                 }
 
@@ -121,12 +127,12 @@ public class ClientHandler implements Runnable{
                 pstmt.setString(4, senderHost);
 
                 try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()){
-                        String username = parts[1];
-                        synchronized (clientUsernames){
-                            clientUsernames.put(this.out, username);
-                        }
-                        currentUsername = username;
+                if (rs.next()){
+                    String username = parts[1];
+                    synchronized (clientUsernames){
+                        clientUsernames.put(this.out, username);
+                    }
+                    currentUsername = username;
                         
                         // Register client in clients map for file transfer
                         try {
@@ -139,18 +145,18 @@ public class ClientHandler implements Runnable{
                             e.printStackTrace();
                         }
                         
-                        out.println("LOGIN OK");
-                        isLoggedIn = true;
+                    out.println("LOGIN OK");
+                    isLoggedIn = true;
 
                         String updateLoginSQL = "UPDATE users SET loggedin = 1 WHERE username = ?";
-                        try (PreparedStatement updatePstmt = conn.prepareStatement(updateLoginSQL)){
-                            updatePstmt.setString(1, username);
-                            updatePstmt.executeUpdate();
-                        } catch (SQLException e){
-                            e.printStackTrace();
-                        }
-                    } else {
-                        out.println("LOGIN FAILED");        
+                    try (PreparedStatement updatePstmt = conn.prepareStatement(updateLoginSQL)){
+                        updatePstmt.setString(1, username);
+                        updatePstmt.executeUpdate();
+                    } catch (SQLException e){
+                        e.printStackTrace();
+                    }
+                } else {
+                    out.println("LOGIN FAILED");        
                     }
                 }
             } catch (SQLException e){
@@ -198,7 +204,7 @@ public class ClientHandler implements Runnable{
             }
 
             String target = parts[1];
-            
+
             // Parse message (everything after target)
             StringBuilder messageBuilder = new StringBuilder();
             for (int i = 2; i < parts.length; i++) {
@@ -208,8 +214,8 @@ public class ClientHandler implements Runnable{
             String message = messageBuilder.toString().trim();
 
             if (message.isEmpty()) {
-                out.println("ERROR: Message content cannot be empty.");
-                return;
+                 out.println("ERROR: Message content cannot be empty.");
+            return;
             }
 
             if (message.length() > 2000) {
@@ -256,7 +262,7 @@ public class ClientHandler implements Runnable{
             String broadcastMessage = String.format("MSG #%s: %s", channel, message);
             synchronized (clientWriters) {
                 for (PrintWriter writer : clientWriters) {
-                    writer.println(broadcastMessage);
+                writer.println(broadcastMessage);
                 }
             }
             out.println("MESSAGE SENT");
@@ -520,7 +526,6 @@ public class ClientHandler implements Runnable{
 
             else if (type.equalsIgnoreCase("channel")) {
                 for (ClientConnection cc : clients.values()) {
-                    // TODO: check channel membership properly
                     cc.dataOut.writeUTF("incomingFile " + filename + " " + data.length);
                     cc.dataOut.write(data);
                     cc.dataOut.flush();

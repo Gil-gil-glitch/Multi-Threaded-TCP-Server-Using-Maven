@@ -50,6 +50,13 @@ public class ServerMaven {
                 ");";
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createTableSQL);
+            
+            // Add loggedin column if it doesn't exist (migration)
+            try {
+                stmt.execute("ALTER TABLE users ADD COLUMN loggedin INTEGER DEFAULT 0");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
         }
     }
 
@@ -80,14 +87,14 @@ public class ServerMaven {
     }
 
     private static void createTasksTableIfNotExists(Connection conn) throws SQLException {
-        String createTableSQL = "CREATE TABLE IF NOT EXISTS tasks (" +
-                "id INTEGER PRIMARY KEY AUTOINCREMENT," +
-                "creator TEXT NOT NULL," +
+    String createTableSQL = "CREATE TABLE IF NOT EXISTS tasks (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "creator TEXT NOT NULL," +
                 "assignee TEXT," +
-                "description TEXT NOT NULL" +
-                ");";
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createTableSQL);
+            "description TEXT NOT NULL" +      
+            ");";
+    try (Statement stmt = conn.createStatement()) {
+        stmt.execute(createTableSQL);
             
             // Add assignee column if table already exists without it
             try {
@@ -95,7 +102,7 @@ public class ServerMaven {
             } catch (SQLException e) {
                 // Column already exists, ignore
             }
-        }
+    }
     }
 
     public static void createFilesTableIfNotExists(Connection conn) throws SQLException {
@@ -107,7 +114,7 @@ public class ServerMaven {
                 "filename TEXT NOT NULL," +
                 "file_data BLOB NOT NULL," +
                 "uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP" +
-                ");";
+                        ");";
         
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(createTableSQL);
