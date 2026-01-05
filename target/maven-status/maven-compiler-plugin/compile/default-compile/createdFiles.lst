@@ -1,4 +1,5 @@
 edu/TCPClient.class
 edu/ClientHandler$ClientConnection.class
 edu/ClientHandler.class
+edu/ClientHandler$TaskInfo.class
 edu/ServerMaven.class

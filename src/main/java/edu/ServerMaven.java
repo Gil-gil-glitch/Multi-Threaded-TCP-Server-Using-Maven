@@ -1,5 +1,6 @@
 package edu;
 
+import java.io.IOException;
 import java.net.*;
 import java.sql.*;
 
@@ -7,12 +8,29 @@ import java.sql.*;
 public class ServerMaven {
     
     private static final String USERS_DB_URL = "jdbc:sqlite:users.db";
+    private static ServerSocket serverSocket = null;
+    private static volatile boolean running = true;
 
     public static void main(String[] args) {
         
         int port = Integer.parseInt(args[0]);
 
-        System.out.println("TCP Server running on " + port);        
+        System.out.println("TCP Server running on " + port);
+        System.out.println("Press Ctrl+C to stop the server.");
+        
+        // Add shutdown hook for graceful shutdown
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("\nShutting down server...");
+            running = false;
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                try {
+                    serverSocket.close();
+                } catch (IOException e) {
+                    System.err.println("Error closing server socket: " + e.getMessage());
+                }
+            }
+            System.out.println("Server stopped.");
+        }));
         
         try {
             Class.forName("org.sqlite.JDBC");
@@ -20,22 +38,48 @@ public class ServerMaven {
             System.err.println("SQLite driver missing");
             return;
         }
-        try (Connection conn = DriverManager.getConnection(USERS_DB_URL); ServerSocket serverSocket = new ServerSocket(port)){
+        // Create initial connection for table setup
+        try (Connection setupConn = DriverManager.getConnection(USERS_DB_URL)) {
+            createUsersTableIfNotExists(setupConn);
+            createChannelMessagesTableIfNotExists(setupConn);
+            createDirectMessagesTableIfNotExists(setupConn);
+            createTasksTableIfNotExists(setupConn);
+            createFilesTableIfNotExists(setupConn);
+        } catch (SQLException e) {
+            System.err.println("Error setting up database: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
 
-            createUsersTableIfNotExists(conn);
-            createChannelMessagesTableIfNotExists(conn);
-            createDirectMessagesTableIfNotExists(conn);
-            createTasksTableIfNotExists(conn);
-            createFilesTableIfNotExists(conn);
+        try {
+            serverSocket = new ServerSocket(port);
 
-            while (true){
-                Socket client = serverSocket.accept();
-                System.out.println("Client connected: " + client.getInetAddress());
-                new Thread(new ClientHandler(client, conn)).start();
+            while (running){
+                try {
+                    Socket client = serverSocket.accept();
+                    System.out.println("Client connected: " + client.getInetAddress());
+                    // Each ClientHandler gets its own connection
+                    new Thread(new ClientHandler(client)).start();
+                } catch (IOException e) {
+                    if (running) {
+                        // Only print error if we're still supposed to be running
+                        e.printStackTrace();
+                    }
+                    // If serverSocket was closed (shutdown), break the loop
+                    break;
+                }
             } 
             
         } catch (Exception e){
             e.printStackTrace();
+        } finally {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                try {
+                    serverSocket.close();
+                } catch (IOException e) {
+                    System.err.println("Error closing server socket: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -90,8 +134,10 @@ public class ServerMaven {
     String createTableSQL = "CREATE TABLE IF NOT EXISTS tasks (" +
             "id INTEGER PRIMARY KEY AUTOINCREMENT," +
             "creator TEXT NOT NULL," +
-                "assignee TEXT," +
-            "description TEXT NOT NULL" +      
+            "assignee TEXT," +
+            "description TEXT NOT NULL," +
+            "status TEXT DEFAULT 'pending'," +
+            "deadline TEXT" +
             ");";
     try (Statement stmt = conn.createStatement()) {
         stmt.execute(createTableSQL);
@@ -99,6 +145,20 @@ public class ServerMaven {
             // Add assignee column if table already exists without it
             try {
                 stmt.execute("ALTER TABLE tasks ADD COLUMN assignee TEXT");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
+            
+            // Add status column if table already exists without it
+            try {
+                stmt.execute("ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'pending'");
+            } catch (SQLException e) {
+                // Column already exists, ignore
+            }
+            
+            // Add deadline column if table already exists without it
+            try {
+                stmt.execute("ALTER TABLE tasks ADD COLUMN deadline TEXT");
             } catch (SQLException e) {
                 // Column already exists, ignore
             }
@@ -121,4 +181,3 @@ public class ServerMaven {
         }
     }
 }
-    
