@@ -1,5 +1,10 @@
 package edu;
 
+/**
+ * TCPClient: Client application that connects to the server and handles user input/output.
+ * Allows users to send messages, manage tasks, and transfer files through the TCP connection.
+ */
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
