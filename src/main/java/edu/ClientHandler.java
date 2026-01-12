@@ -1,8 +1,16 @@
 package edu;
 
+/**
+ * ClientHandler: Handles individual client connections and processes client commands.
+ * Manages authentication, messaging, task management, and file transfers for each connected client.
+ */
+
 import java.io.*;
 import java.net.*;
 import java.sql.*;
+import java.time.ZonedDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -181,10 +189,6 @@ public class ClientHandler implements Runnable{
                     } catch (SQLException e){
                         e.printStackTrace();
                     }
-                    
-                    // Deliver offline messages and files
-                    deliverOfflineMessages(username, out);
-                    deliverOfflineFiles(username, out);
                 } else {
                     out.println("LOGIN FAILED");        
                     }
@@ -278,21 +282,45 @@ public class ClientHandler implements Runnable{
 
         // Helper method to save message to database
         private boolean saveMessageToDatabase(String table, String[] columns, String[] values, PrintWriter out) {
+            // Add timestamp column if it exists in the table
+            boolean hasTimestamp = false;
+            for (String col : columns) {
+                if (col.equals("timestamp")) {
+                    hasTimestamp = true;
+                    break;
+                }
+            }
+            
             StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(table).append(" (");
             for (int i = 0; i < columns.length; i++) {
                 if (i > 0) sqlBuilder.append(", ");
                 sqlBuilder.append(columns[i]);
+            }
+            // Add timestamp if table has timestamp column but it's not in the columns array
+            if (!hasTimestamp && (table.equals("direct_messages") || table.equals("channel_messages"))) {
+                sqlBuilder.append(", timestamp");
             }
             sqlBuilder.append(") VALUES (");
             for (int i = 0; i < columns.length; i++) {
                 if (i > 0) sqlBuilder.append(", ");
                 sqlBuilder.append("?");
             }
+            // Add timestamp value if needed
+            if (!hasTimestamp && (table.equals("direct_messages") || table.equals("channel_messages"))) {
+                sqlBuilder.append(", ?");
+            }
             sqlBuilder.append(")");
             
             try (PreparedStatement pstmt = conn.prepareStatement(sqlBuilder.toString())) {
+                int paramIndex = 1;
                 for (int i = 0; i < values.length; i++) {
-                    pstmt.setString(i + 1, values[i]);
+                    pstmt.setString(paramIndex++, values[i]);
+                }
+                // Set timestamp using Korea Standard Time (KST, UTC+9)
+                if (!hasTimestamp && (table.equals("direct_messages") || table.equals("channel_messages"))) {
+                    String currentTime = ZonedDateTime.now(ZoneId.of("Asia/Seoul"))
+                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                    pstmt.setString(paramIndex, currentTime);
                 }
                 pstmt.executeUpdate();
                 return true;
@@ -342,7 +370,7 @@ public class ClientHandler implements Runnable{
             if (receiverFound) {
                 out.println("MESSAGE SENT");
             } else {
-                out.println("MESSAGE SENT (User " + receiver + " is offline. Message will be delivered when they login.)");
+                out.println("MESSAGE SENT (User " + receiver + " is offline.)");
             }
         }
 
@@ -972,13 +1000,18 @@ public class ClientHandler implements Runnable{
             } 
     }
 
+    // Helper method to create file message format: incomingFile <base64_filename> <size> <base64_data>
+    private String createFileMessage(String filename, byte[] data) {
+        String base64Data = java.util.Base64.getEncoder().encodeToString(data);
+        // Encode filename to Base64 so spaces/special chars don't break parsing
+        String encodedFilename = java.util.Base64.getEncoder()
+                .encodeToString(filename.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return "incomingFile " + encodedFilename + " " + data.length + " " + base64Data;
+    }
+
     private void forwardFile(String type, String destination, String filename, byte[] data) throws IOException {
         synchronized (clients) {
-            String base64Data = java.util.Base64.getEncoder().encodeToString(data);
-            // Encode filename to Base64 so spaces/special chars don't break parsing
-            String encodedFilename = java.util.Base64.getEncoder()
-                    .encodeToString(filename.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            String fileMessage = "incomingFile " + encodedFilename + " " + data.length + " " + base64Data;
+            String fileMessage = createFileMessage(filename, data);
 
             if (type.equalsIgnoreCase("user")) {
                 ClientConnection cc = clients.get(destination);
@@ -994,57 +1027,5 @@ public class ClientHandler implements Runnable{
             }
         }
     }
-
-    private void deliverOfflineMessages(String username, PrintWriter out) {
-        try {
-            String sql = "SELECT sender, message FROM direct_messages WHERE receiver = ? ORDER BY timestamp";
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, username);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    boolean hasMessages = false;
-                    while (rs.next()) {
-                        hasMessages = true;
-                        String sender = rs.getString("sender");
-                        String message = rs.getString("message");
-                        out.println(String.format("receivedMessage %s \"%s\"", sender, message));
-                    }
-                    if (hasMessages) {
-                        // Optionally delete delivered messages, or keep them for history
-                        // For now, we keep them for viewDirectMessages
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Error delivering offline messages: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-    private void deliverOfflineFiles(String username, PrintWriter out) {
-        try {
-            String sql = "SELECT filename, file_data FROM files WHERE destination_type = 'USER' AND destination_name = ? ORDER BY uploaded_at";
-            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, username);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    while (rs.next()) {
-                        String filename = rs.getString("filename");
-                        byte[] fileData = rs.getBytes("file_data");
-                        
-                        String base64Data = java.util.Base64.getEncoder().encodeToString(fileData);
-                        String encodedFilename = java.util.Base64.getEncoder()
-                                .encodeToString(filename.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                        String fileMessage = "incomingFile " + encodedFilename + " " + fileData.length + " " + base64Data;
-                        out.println(fileMessage);
-                    }
-                    // Optionally delete delivered files, or keep them for history
-                    // For now, we keep them
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Error delivering offline files: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
 
 }
