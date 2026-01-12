@@ -1,5 +1,10 @@
 package edu;
 
+/**
+ * ServerMaven: Main server application that initializes the database and accepts client connections.
+ * Creates a multi-threaded TCP server where each client connection is handled by a separate ClientHandler thread.
+ */
+
 import java.io.IOException;
 import java.net.*;
 import java.sql.*;
@@ -15,7 +20,7 @@ public class ServerMaven {
         
         int port = Integer.parseInt(args[0]);
 
-        System.out.println("TCP Server running on " + port);
+        System.out.println("TCP Server running on " + port);        
         System.out.println("Press Ctrl+C to stop the server.");
         
         // Add shutdown hook for graceful shutdown
@@ -56,7 +61,7 @@ public class ServerMaven {
 
             while (running){
                 try {
-                    Socket client = serverSocket.accept();
+                Socket client = serverSocket.accept();
                     System.out.println("Client connected: " + client.getInetAddress());
                     // Each ClientHandler gets its own connection
                     new Thread(new ClientHandler(client)).start();
